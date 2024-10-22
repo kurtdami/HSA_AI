@@ -1,0 +1,565 @@
+'use client'
+import { useState, useEffect, useCallback } from 'react';
+import { collection, addDoc, query, onSnapshot, deleteDoc, doc, updateDoc, where } from 'firebase/firestore';
+import { db } from '../firebase';
+import { PlusIcon, TrashIcon, ArrowDownTrayIcon } from "@heroicons/react/16/solid";
+import { useAuth } from "../authcontext";
+import { useRouter } from "next/navigation";
+import { CameraComp } from "../CameraComp";
+import { run } from "../genai/app";
+import * as XLSX from 'xlsx';
+
+export default function ExpensesPage() {
+  type Expense = {
+    id?: string;
+    date: string;
+    merchant: string;
+    itemName: string;
+    price: number;
+    tax: number;
+    totalPrice: number;
+    hsaEligible: boolean;
+  }
+
+  const { user, logout } = useAuth();
+  const router = useRouter();
+  const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [newExpense, setNewExpense] = useState<Expense>({
+    date: '',
+    merchant: '',
+    itemName: '',
+    price: 0,
+    tax: 0,
+    totalPrice: 0,
+    hsaEligible: false
+  });
+  const [image, setImage] = useState('');
+  const [displayImage, setDisplayImage] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [analysisError, setAnalysisError] = useState<string | null>(null);
+  const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
+  const [selectedTaxYear, setSelectedTaxYear] = useState<string>('');
+  // Add this new state to track if the camera is active
+  const [isCameraActive, setIsCameraActive] = useState(false);
+  const [isUploadedImage, setIsUploadedImage] = useState(false);
+
+  const formatDate = (dateString: string) => {
+    const date = new Date(dateString);
+    return date.toISOString().split('T')[0]; // Returns YYYY-MM-DD
+  };
+
+  useEffect(() => {
+    if (!user) {
+      console.log("No user in ExpensesPage, redirecting to home");
+      router.push('/');
+      return;
+    }
+
+    console.log("User in ExpensesPage:", user);
+
+    const q = query(collection(db, 'expenses'), where('userId', '==', user.uid));
+    const unsubscribe = onSnapshot(q, (querySnapshot) => {
+      const expensesArr = querySnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      })) as Expense[];
+      setExpenses(expensesArr);
+    });
+
+    return () => unsubscribe();
+  }, [user, router]);
+
+  const addExpense = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user) return;
+
+    try {
+      await addDoc(collection(db, 'expenses'), {
+        ...newExpense,
+        date: formatDate(newExpense.date), // Ensure date is in YYYY-MM-DD format
+        userId: user.uid,
+        createdAt: new Date()
+      });
+      setNewExpense({
+        date: '',
+        merchant: '',
+        itemName: '',
+        price: 0,
+        tax: 0,
+        totalPrice: 0,
+        hsaEligible: false
+      });
+      setImage('');
+    } catch (error) {
+      console.error("Error adding expense: ", error);
+    }
+  };
+
+  const deleteExpense = async (id: string) => {
+    await deleteDoc(doc(db, 'expenses', id));
+  };
+
+  const updateExpense = async (id: string, updatedExpense: Expense) => {
+    await updateDoc(doc(db, 'expenses', id), updatedExpense);
+  };
+
+  const handleImageCapture = async () => {
+    if (image) {
+      setAnalysisError(null);
+      try {
+        const result = await run(image, process.env.NEXT_PUBLIC_GEMINI_API_KEY);
+        // Remove the following line:
+        // console.log("Raw Gemini API result:", result);
+        
+        let parsedResult;
+        try {
+          parsedResult = JSON.parse(result.response.text());
+        } catch (parseError) {
+          console.error("Error parsing JSON:", parseError);
+          // Attempt to clean the JSON string
+          const cleanedJsonString = result.response.text().replace(/\n/g, '').replace(/\r/g, '').trim();
+          try {
+            parsedResult = JSON.parse(cleanedJsonString);
+          } catch (secondParseError) {
+            console.error("Error parsing cleaned JSON:", secondParseError);
+            setAnalysisError("Unable to parse the receipt data. Please try again.");
+            return;
+          }
+        }
+        
+        // Remove the following line:
+        // console.log("Parsed Gemini API result:", parsedResult);
+        
+        if (!parsedResult.items || !Array.isArray(parsedResult.items)) {
+          setAnalysisError("Invalid receipt data format. Please try again.");
+          return;
+        }
+        
+        const taxRate = parseFloat(parsedResult.taxRate) / 100;
+        const hsaEligibleItems = parsedResult.items.filter(item => item.HealthSpendingAccountEligible);
+        
+        if (hsaEligibleItems.length > 0) {
+          // Add each HSA-eligible item as a separate expense
+          for (const item of hsaEligibleItems) {
+            const price = parseFloat(item.price);
+            const tax = Number((price * taxRate).toFixed(2));
+            const totalPrice = Number((price + tax).toFixed(2));
+            
+            await addDoc(collection(db, 'expenses'), {
+              date: formatDate(parsedResult.date),
+              merchant: parsedResult.merchant,
+              itemName: item.name,
+              price: price,
+              tax: tax,
+              totalPrice: totalPrice,
+              hsaEligible: item.HealthSpendingAccountEligible,
+              userId: user?.uid,
+              createdAt: new Date()
+            });
+          }
+          setNewExpense({
+            date: '',
+            merchant: '',
+            itemName: '',
+            price: 0,
+            tax: 0,
+            totalPrice: 0,
+            hsaEligible: false
+          });
+          setImage('');
+        } else {
+          setAnalysisError("No HSA-eligible items found in the receipt.");
+        }
+        
+        // Log all items for reference
+        console.log("All items on receipt:", parsedResult.items);
+        console.log("HSA-eligible items:", hsaEligibleItems);
+        
+      } catch (error) {
+        console.error("Error analyzing image:", error);
+        setAnalysisError("An error occurred while analyzing the image. Please try again.");
+      }
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      await logout();
+      router.push('/');
+    } catch (error) {
+      console.error("Error logging out:", error);
+    }
+  };
+
+  const toggleEdit = (expense: Expense) => {
+    if (editingExpense && editingExpense.id === expense.id) {
+      // Save the edited expense
+      updateExpense(expense.id!, editingExpense);
+      setEditingExpense(null);
+    } else {
+      // Start editing
+      setEditingExpense(expense);
+    }
+  };
+
+  const handleEditChange = (field: keyof Expense, value: string | number) => {
+    if (editingExpense) {
+      setEditingExpense({ ...editingExpense, [field]: value });
+    }
+  };
+
+  // Add this new function to get unique tax years from expenses
+  const getUniqueTaxYears = () => {
+    const years = expenses.map(expense => new Date(expense.date).getFullYear());
+    return Array.from(new Set(years)).sort((a, b) => b - a); // Sort in descending order
+  };
+
+  // Add this new function to calculate the total for the selected tax year
+  const calculateTotalForSelectedYear = () => {
+    return filteredExpenses.reduce((total, expense) => total + expense.totalPrice, 0).toFixed(2);
+  };
+
+  // Modify the existing filtering logic
+  const filteredExpenses = expenses.filter(expense => {
+    const expenseYear = new Date(expense.date).getFullYear().toString();
+    const matchesSearch = 
+      expense.merchant.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      expense.date.includes(searchQuery) ||
+      expense.itemName.toLowerCase().includes(searchQuery.toLowerCase());
+    
+    return (selectedTaxYear === '' || expenseYear === selectedTaxYear) && matchesSearch;
+  });
+
+  // Add this new function to generate and download Excel
+  const exportToExcel = useCallback(() => {
+    const year = selectedTaxYear || 'All Years';
+    const filename = `HSA_Expenses_${year}.xlsx`;
+    
+    // Prepare data for Excel using filteredExpenses
+    const data = filteredExpenses.map(expense => ({
+      Date: formatDate(expense.date),
+      Merchant: expense.merchant,
+      'Item Name': expense.itemName,
+      Price: expense.price,
+      Tax: expense.tax,
+      'Total Price': expense.totalPrice
+    }));
+
+    // Add total row
+    const total = calculateTotalForSelectedYear();
+    data.push({
+      Date: '',
+      Merchant: '',
+      'Item Name': 'Total',
+      Price: '',
+      Tax: '',
+      'Total Price': parseFloat(total)
+    });
+
+    // Create workbook and worksheet
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.json_to_sheet(data);
+
+    // Add worksheet to workbook
+    XLSX.utils.book_append_sheet(wb, ws, "HSA Expenses");
+
+    // Generate Excel file and trigger download
+    XLSX.writeFile(wb, filename);
+  }, [filteredExpenses, selectedTaxYear, calculateTotalForSelectedYear, formatDate]);
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setImage(reader.result as string);
+        setIsUploadedImage(true);
+        setAnalysisError(null); // Clear error message
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleCameraClose = useCallback(() => {
+    setIsCameraActive(false);
+    setImage('');
+    setAnalysisError(null); // Clear error message
+  }, []);
+
+  const handleAnalyze = useCallback(() => {
+    handleImageCapture();
+    setIsCameraActive(false);
+  }, [handleImageCapture]);
+
+  return (
+    <main className="flex min-h-screen flex-col items-center justify-between sm:p-8 p-4">
+      <div className="z-10 w-full max-w-7xl items-center justify-between font-mono text-sm">
+        <div className="flex justify-between items-center mb-4">
+          <h1 className="text-4xl p-4">HSA Expense Tracker</h1>
+          <button
+            onClick={handleLogout}
+            className="relative bg-slate-950 text-white p-3 rounded-lg hover:bg-slate-900 border-2 border-transparent hover:border-slate-200 flex items-center justify-center transition-all duration-300"
+          >
+            <span className="mr-2">Logout</span>
+            <span className="absolute inset-0 border-2 border-slate-200 rounded-lg pointer-events-none"></span>
+          </button>
+        </div>
+        <div className="bg-slate-800 p-6 rounded-lg">
+          <form onSubmit={addExpense} className="grid grid-cols-7 gap-x-2 gap-y-4 items-center text-black mb-4">
+            <div className="col-span-1 text-white text-center">Date</div>
+            <div className="col-span-1 text-white text-center">Merchant</div>
+            <div className="col-span-2 text-white text-center">Item Name</div>
+            <div className="col-span-1 text-white text-center">Price</div>
+            <div className="col-span-1 text-white text-center">Tax</div>
+            <div className="col-span-1 text-white text-center">Total Price</div>
+            
+            <input
+              value={newExpense.date}
+              onChange={(e) => setNewExpense({ ...newExpense, date: e.target.value })}
+              className="col-span-1 p-2 border rounded-lg" type="date" required
+            />
+            <input
+              value={newExpense.merchant}
+              onChange={(e) => setNewExpense({ ...newExpense, merchant: e.target.value })}
+              className="col-span-1 p-2 border rounded-lg" type="text" placeholder="Merchant" required
+            />
+            <input
+              value={newExpense.itemName}
+              onChange={(e) => setNewExpense({ ...newExpense, itemName: e.target.value })}
+              className="col-span-2 p-2 border rounded-lg" type="text" placeholder="Item Name" required
+            />
+            <input
+              value={newExpense.price}
+              onChange={(e) => setNewExpense({ ...newExpense, price: parseFloat(e.target.value) })}
+              className="col-span-1 p-2 border rounded-lg" type="number" step="0.01" placeholder="Price" required
+            />
+            <input
+              value={newExpense.tax}
+              onChange={(e) => setNewExpense({ ...newExpense, tax: parseFloat(e.target.value) })}
+              className="col-span-1 p-2 border rounded-lg" type="number" step="0.01" placeholder="Tax" required
+            />
+            <input
+              value={newExpense.totalPrice}
+              onChange={(e) => setNewExpense({ ...newExpense, totalPrice: parseFloat(e.target.value) })}
+              className="col-span-1 p-2 border rounded-lg" type="number" step="0.01" placeholder="Total Price" required
+            />
+            <button
+              className="col-span-7 text-white bg-slate-950 rounded-lg hover:bg-slate-900 p-2 text-xl"
+              type="submit"
+            >
+              <PlusIcon className="h-6 w-6 mr-1 inline" />
+              Add Expense
+            </button>
+          </form>
+          <div className="flex-col items-center justify-between p-4 w-full max-w-2xl">
+            {isCameraActive ? (
+              <div className="mb-4">
+                <CameraComp 
+                  image={image} 
+                  setImage={setImage}
+                  setDisplayImage={setDisplayImage}
+                  onClose={handleCameraClose}
+                  onAnalyze={handleAnalyze}
+                />
+              </div>
+            ) : (
+              <div className="flex justify-center space-x-4 mb-4">
+                <button 
+                  className="bg-blue-600 p-2 rounded-md"
+                  onClick={() => {
+                    setIsCameraActive(true);
+                    setAnalysisError(null); // Clear error message
+                  }}
+                >
+                  Take Photo
+                </button>
+                {!image && (
+                  <input 
+                    className="p-2" 
+                    type="file" 
+                    accept="image/*" 
+                    onChange={handleFileUpload}
+                  />
+                )}
+              </div>
+            )}
+            {image && !isCameraActive && (
+              <div className="flex-col items-center justify-center">
+                <img 
+                  className="w-full h-auto max-h-64 object-contain mb-4" 
+                  src={image}
+                  alt='Receipt' 
+                />
+                <div className="flex justify-between">
+                  <button 
+                    className="bg-blue-600 p-2 rounded-md px-4"
+                    onClick={handleImageCapture}
+                  >
+                    Analyze Receipt
+                  </button>
+                  <button 
+                    className="bg-red-600 p-2 rounded-md px-4"
+                    onClick={() => {
+                      setImage('');
+                      setIsUploadedImage(false);
+                      setAnalysisError(null); // Clear error message
+                    }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+          <div className="flex justify-between items-center w-full mb-4">
+            <input
+              type="text"
+              className="text-black p-2 border rounded w-1/4"
+              placeholder="Search expenses..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+            <select
+              className="text-black p-2 border rounded w-1/4"
+              value={selectedTaxYear}
+              onChange={(e) => setSelectedTaxYear(e.target.value)}
+            >
+              <option value="">All Tax Years</option>
+              {getUniqueTaxYears().map(year => (
+                <option key={year} value={year.toString()}>{year} Tax Year</option>
+              ))}
+            </select>
+            <div className="text-white text-xl">
+              Total: ${calculateTotalForSelectedYear()}
+            </div>
+            <button
+              onClick={exportToExcel}
+              className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg flex items-center"
+            >
+              <ArrowDownTrayIcon className="h-5 w-5 mr-2" />
+              Export Excel
+            </button>
+          </div>
+          <div className="overflow-x-auto w-full">
+            <table className="w-full text-left">
+              <thead>
+                <tr className="text-white">
+                  <th className="p-2">Date</th>
+                  <th className="p-2">Merchant</th>
+                  <th className="p-2 w-1/4">Item Name</th>
+                  <th className="p-2">Price</th>
+                  <th className="p-2">Tax</th>
+                  <th className="p-2">Total Price</th>
+                  <th className="p-2">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredExpenses.map((expense) => (
+                  <tr key={expense.id} className="bg-slate-950 text-white">
+                    <td className="p-2">
+                      {editingExpense?.id === expense.id ? (
+                        <input
+                          type="date"
+                          value={editingExpense.date}
+                          onChange={(e) => handleEditChange('date', e.target.value)}
+                          className="bg-slate-800 text-white p-1 rounded"
+                        />
+                      ) : (
+                        formatDate(expense.date)
+                      )}
+                    </td>
+                    <td className="p-2">
+                      {editingExpense?.id === expense.id ? (
+                        <input
+                          type="text"
+                          value={editingExpense.merchant}
+                          onChange={(e) => handleEditChange('merchant', e.target.value)}
+                          className="bg-slate-800 text-white p-1 rounded"
+                        />
+                      ) : (
+                        expense.merchant
+                      )}
+                    </td>
+                    <td className="p-2 w-1/4">
+                      {editingExpense?.id === expense.id ? (
+                        <input
+                          type="text"
+                          value={editingExpense.itemName}
+                          onChange={(e) => handleEditChange('itemName', e.target.value)}
+                          className="bg-slate-800 text-white p-1 rounded w-full"
+                        />
+                      ) : (
+                        expense.itemName
+                      )}
+                    </td>
+                    <td className="p-2">
+                      {editingExpense?.id === expense.id ? (
+                        <input
+                          type="number"
+                          value={editingExpense.price}
+                          onChange={(e) => handleEditChange('price', parseFloat(e.target.value))}
+                          className="bg-slate-800 text-white p-1 rounded w-full"
+                        />
+                      ) : (
+                        expense.price
+                      )}
+                    </td>
+                    <td className="p-2">
+                      {editingExpense?.id === expense.id ? (
+                        <input
+                          type="number"
+                          value={editingExpense.tax}
+                          onChange={(e) => handleEditChange('tax', Number(parseFloat(e.target.value).toFixed(2)))}
+                          className="bg-slate-800 text-white p-1 rounded"
+                          step="0.01"
+                        />
+                      ) : (
+                        expense.tax.toFixed(2)
+                      )}
+                    </td>
+                    <td className="p-2">
+                      {editingExpense?.id === expense.id ? (
+                        <input
+                          type="number"
+                          value={editingExpense.totalPrice}
+                          onChange={(e) => handleEditChange('totalPrice', Number(parseFloat(e.target.value).toFixed(2)))}
+                          className="bg-slate-800 text-white p-1 rounded"
+                          step="0.01"
+                        />
+                      ) : (
+                        expense.totalPrice.toFixed(2)
+                      )}
+                    </td>
+                    <td className="p-2">
+                      <div className="flex items-center space-x-2">
+                        <button
+                          onClick={() => toggleEdit(expense)}
+                          className={`${
+                            editingExpense?.id === expense.id
+                              ? 'bg-green-500 hover:bg-green-600'
+                              : 'bg-blue-500 hover:bg-blue-600'
+                          } text-white px-3 py-1 rounded-lg flex items-center`}
+                        >
+                          {editingExpense?.id === expense.id ? 'Save' : 'Edit'}
+                        </button>
+                        <button
+                          onClick={() => deleteExpense(expense.id!)}
+                          className="bg-red-500 hover:bg-red-600 text-white p-1 rounded-lg flex items-center"
+                        >
+                          <TrashIcon className="h-5 w-5" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {analysisError && (
+            <div className="text-red-500 mt-2">{analysisError}</div>
+          )}
+        </div>
+      </div>
+    </main>
+  );
+}
