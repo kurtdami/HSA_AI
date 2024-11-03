@@ -37,7 +37,17 @@ interface ExcelDataRow {
 }
 
 // Add this type to handle Firebase document updates
-type FirestoreExpense = Omit<Expense, 'id'>;
+type FirestoreExpense = {
+  date: string;
+  merchant: string;
+  itemName: string;
+  price: number;
+  tax: number;
+  totalPrice: number;
+  hsaEligible: boolean;
+  userId: string;
+  createdAt: Date;
+};
 
 export default function ExpensesPage() {
   const { user, logout } = useAuth();
@@ -121,9 +131,20 @@ export default function ExpensesPage() {
   };
 
   const updateExpense = async (id: string, updatedExpense: Expense) => {
-    // Create a new object without the id field for Firestore
-    const { id: _, ...expenseData } = updatedExpense;
-    await updateDoc(doc(db, 'expenses', id), expenseData as FirestoreExpense);
+    if (!user) return;
+    
+    // Create a new object with only the fields we want to update
+    const updateData: Partial<FirestoreExpense> = {
+      date: formatDate(new Date(updatedExpense.date)),
+      merchant: updatedExpense.merchant,
+      itemName: updatedExpense.itemName,
+      price: updatedExpense.price,
+      tax: updatedExpense.tax,
+      totalPrice: updatedExpense.totalPrice,
+      hsaEligible: updatedExpense.hsaEligible,
+    };
+
+    await updateDoc(doc(db, 'expenses', id), updateData);
   };
 
   const handleImageCapture = useCallback(async (imageData: string) => {
