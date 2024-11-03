@@ -8,19 +8,35 @@ import { useRouter } from "next/navigation";
 import { CameraComp } from "../CameraComp";
 import { run } from "../genai/app";
 import * as XLSX from 'xlsx';
+import Image from 'next/image';
+
+interface ReceiptItem {
+  HealthSpendingAccountEligible: boolean;
+  name?: string;
+  price?: number;
+}
+
+interface Expense {
+  id?: string;
+  date: string;
+  merchant: string;
+  itemName: string;
+  price: number;
+  tax: number;
+  totalPrice: number;
+  hsaEligible: boolean;
+}
+
+interface ExcelDataRow {
+  Date: string;
+  Merchant: string;
+  'Item Name': string;
+  Price: number | string;
+  Tax: number | string;
+  'Total Price': number;
+}
 
 export default function ExpensesPage() {
-  type Expense = {
-    id?: string;
-    date: string;
-    merchant: string;
-    itemName: string;
-    price: number;
-    tax: number;
-    totalPrice: number;
-    hsaEligible: boolean;
-  }
-
   const { user, logout } = useAuth();
   const router = useRouter();
   const [expenses, setExpenses] = useState<Expense[]>([]);
@@ -39,14 +55,16 @@ export default function ExpensesPage() {
   const [analysisError, setAnalysisError] = useState<string | null>(null);
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
   const [selectedTaxYear, setSelectedTaxYear] = useState<string>('');
-  // Add this new state to track if the camera is active
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [isUploadedImage, setIsUploadedImage] = useState(false);
 
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    return date.toISOString().split('T')[0]; // Returns YYYY-MM-DD
-  };
+  const formatDate = useCallback((date: Date) => {
+    return date.toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    });
+  }, []);
 
   useEffect(() => {
     if (!user) {
@@ -76,7 +94,7 @@ export default function ExpensesPage() {
     try {
       await addDoc(collection(db, 'expenses'), {
         ...newExpense,
-        date: formatDate(newExpense.date), // Ensure date is in YYYY-MM-DD format
+        date: formatDate(new Date(newExpense.date)), // Ensure date is in YYYY-MM-DD format
         userId: user.uid,
         createdAt: new Date()
       });
@@ -103,20 +121,17 @@ export default function ExpensesPage() {
     await updateDoc(doc(db, 'expenses', id), updatedExpense);
   };
 
-  const handleImageCapture = async () => {
-    if (image) {
+  const handleImageCapture = useCallback(async (imageData: string) => {
+    if (imageData) {
       setAnalysisError(null);
       try {
-        const result = await run(image, process.env.NEXT_PUBLIC_GEMINI_API_KEY);
-        // Remove the following line:
-        // console.log("Raw Gemini API result:", result);
+        const result = await run(imageData, process.env.NEXT_PUBLIC_GEMINI_API_KEY);
         
         let parsedResult;
         try {
           parsedResult = JSON.parse(result.response.text());
         } catch (parseError) {
           console.error("Error parsing JSON:", parseError);
-          // Attempt to clean the JSON string
           const cleanedJsonString = result.response.text().replace(/\n/g, '').replace(/\r/g, '').trim();
           try {
             parsedResult = JSON.parse(cleanedJsonString);
@@ -127,16 +142,13 @@ export default function ExpensesPage() {
           }
         }
         
-        // Remove the following line:
-        // console.log("Parsed Gemini API result:", parsedResult);
-        
         if (!parsedResult.items || !Array.isArray(parsedResult.items)) {
           setAnalysisError("Invalid receipt data format. Please try again.");
           return;
         }
         
         const taxRate = parseFloat(parsedResult.taxRate) / 100;
-        const hsaEligibleItems = parsedResult.items.filter(item => item.HealthSpendingAccountEligible);
+        const hsaEligibleItems = parsedResult.items.filter((item: ReceiptItem) => item.HealthSpendingAccountEligible);
         
         if (hsaEligibleItems.length > 0) {
           // Add each HSA-eligible item as a separate expense
@@ -146,7 +158,7 @@ export default function ExpensesPage() {
             const totalPrice = Number((price + tax).toFixed(2));
             
             await addDoc(collection(db, 'expenses'), {
-              date: formatDate(parsedResult.date),
+              date: formatDate(new Date(parsedResult.date)),
               merchant: parsedResult.merchant,
               itemName: item.name,
               price: price,
@@ -171,16 +183,12 @@ export default function ExpensesPage() {
           setAnalysisError("No HSA-eligible items found in the receipt.");
         }
         
-        // Log all items for reference
-        console.log("All items on receipt:", parsedResult.items);
-        console.log("HSA-eligible items:", hsaEligibleItems);
-        
       } catch (error) {
         console.error("Error analyzing image:", error);
         setAnalysisError("An error occurred while analyzing the image. Please try again.");
       }
     }
-  };
+  }, [formatDate, user, setImage]);
 
   const handleLogout = async () => {
     try {
@@ -214,12 +222,7 @@ export default function ExpensesPage() {
     return Array.from(new Set(years)).sort((a, b) => b - a); // Sort in descending order
   };
 
-  // Add this new function to calculate the total for the selected tax year
-  const calculateTotalForSelectedYear = () => {
-    return filteredExpenses.reduce((total, expense) => total + expense.totalPrice, 0).toFixed(2);
-  };
-
-  // Modify the existing filtering logic
+  // Define filteredExpenses before using it in calculateTotalForSelectedYear
   const filteredExpenses = expenses.filter(expense => {
     const expenseYear = new Date(expense.date).getFullYear().toString();
     const matchesSearch = 
@@ -230,14 +233,17 @@ export default function ExpensesPage() {
     return (selectedTaxYear === '' || expenseYear === selectedTaxYear) && matchesSearch;
   });
 
+  const calculateTotalForSelectedYear = useCallback((year: number) => {
+    return filteredExpenses.reduce((total, expense) => total + expense.totalPrice, 0).toFixed(2);
+  }, [filteredExpenses]);
+
   // Add this new function to generate and download Excel
   const exportToExcel = useCallback(() => {
     const year = selectedTaxYear || 'All Years';
     const filename = `HSA_Expenses_${year}.xlsx`;
     
-    // Prepare data for Excel using filteredExpenses
-    const data = filteredExpenses.map(expense => ({
-      Date: formatDate(expense.date),
+    const data: ExcelDataRow[] = filteredExpenses.map(expense => ({
+      Date: formatDate(new Date(expense.date)),
       Merchant: expense.merchant,
       'Item Name': expense.itemName,
       Price: expense.price,
@@ -245,25 +251,19 @@ export default function ExpensesPage() {
       'Total Price': expense.totalPrice
     }));
 
-    // Add total row
-    const total = calculateTotalForSelectedYear();
+    const total = calculateTotalForSelectedYear(parseInt(selectedTaxYear) || new Date().getFullYear());
     data.push({
       Date: '',
       Merchant: '',
       'Item Name': 'Total',
-      Price: '',
-      Tax: '',
+      Price: 0,
+      Tax: 0,
       'Total Price': parseFloat(total)
     });
 
-    // Create workbook and worksheet
     const wb = XLSX.utils.book_new();
     const ws = XLSX.utils.json_to_sheet(data);
-
-    // Add worksheet to workbook
     XLSX.utils.book_append_sheet(wb, ws, "HSA Expenses");
-
-    // Generate Excel file and trigger download
     XLSX.writeFile(wb, filename);
   }, [filteredExpenses, selectedTaxYear, calculateTotalForSelectedYear, formatDate]);
 
@@ -286,10 +286,11 @@ export default function ExpensesPage() {
     setAnalysisError(null); // Clear error message
   }, []);
 
-  const handleAnalyze = useCallback(() => {
-    handleImageCapture();
-    setIsCameraActive(false);
-  }, [handleImageCapture]);
+  const handleAnalyzeClick = useCallback(() => {
+    if (image) {
+      handleImageCapture(image);
+    }
+  }, [image, handleImageCapture]);
 
   return (
     <main className="flex min-h-screen flex-col items-center justify-between sm:p-8 p-4">
@@ -359,7 +360,7 @@ export default function ExpensesPage() {
                   setImage={setImage}
                   setDisplayImage={setDisplayImage}
                   onClose={handleCameraClose}
-                  onAnalyze={handleAnalyze}
+                  onAnalyze={handleAnalyzeClick}
                 />
               </div>
             ) : (
@@ -385,15 +386,17 @@ export default function ExpensesPage() {
             )}
             {image && !isCameraActive && (
               <div className="flex-col items-center justify-center">
-                <img 
-                  className="w-full h-auto max-h-64 object-contain mb-4" 
+                <Image 
                   src={image}
-                  alt='Receipt' 
+                  alt="Receipt image"
+                  width={640}
+                  height={480}
+                  className="w-full h-auto rounded-lg"
                 />
                 <div className="flex justify-between">
                   <button 
                     className="bg-blue-600 p-2 rounded-md px-4"
-                    onClick={handleImageCapture}
+                    onClick={handleAnalyzeClick}
                   >
                     Analyze Receipt
                   </button>
@@ -430,7 +433,7 @@ export default function ExpensesPage() {
               ))}
             </select>
             <div className="text-white text-xl">
-              Total: ${calculateTotalForSelectedYear()}
+              Total: ${calculateTotalForSelectedYear(new Date(selectedTaxYear).getFullYear())}
             </div>
             <button
               onClick={exportToExcel}
@@ -465,7 +468,7 @@ export default function ExpensesPage() {
                           className="bg-slate-800 text-white p-1 rounded"
                         />
                       ) : (
-                        formatDate(expense.date)
+                        formatDate(new Date(expense.date))
                       )}
                     </td>
                     <td className="p-2">
