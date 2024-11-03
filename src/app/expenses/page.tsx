@@ -36,6 +36,9 @@ interface ExcelDataRow {
   'Total Price': number;
 }
 
+// Add this type to handle Firebase document updates
+type FirestoreExpense = Omit<Expense, 'id'>;
+
 export default function ExpensesPage() {
   const { user, logout } = useAuth();
   const router = useRouter();
@@ -118,7 +121,9 @@ export default function ExpensesPage() {
   };
 
   const updateExpense = async (id: string, updatedExpense: Expense) => {
-    await updateDoc(doc(db, 'expenses', id), updatedExpense);
+    // Create a new object without the id field for Firestore
+    const { id: _, ...expenseData } = updatedExpense;
+    await updateDoc(doc(db, 'expenses', id), expenseData as FirestoreExpense);
   };
 
   const handleImageCapture = useCallback(async (imageData: string) => {
