@@ -489,7 +489,7 @@ export default function ExpensesPage() {
                       {editingExpense?.id === expense.id ? (
                         <input
                           type="date"
-                          value={editingExpense.date}
+                          value={editingExpense?.date || ''}
                           onChange={(e) => handleEditChange('date', e.target.value)}
                           className="bg-slate-800 text-white p-1 rounded"
                         />
@@ -501,7 +501,7 @@ export default function ExpensesPage() {
                       {editingExpense?.id === expense.id ? (
                         <input
                           type="text"
-                          value={editingExpense.merchant}
+                          value={editingExpense?.merchant || ''}
                           onChange={(e) => handleEditChange('merchant', e.target.value)}
                           className="bg-slate-800 text-white p-1 rounded"
                         />
@@ -513,7 +513,7 @@ export default function ExpensesPage() {
                       {editingExpense?.id === expense.id ? (
                         <input
                           type="text"
-                          value={editingExpense.itemName}
+                          value={editingExpense?.itemName || ''}
                           onChange={(e) => handleEditChange('itemName', e.target.value)}
                           className="bg-slate-800 text-white p-1 rounded w-full"
                         />
@@ -525,7 +525,7 @@ export default function ExpensesPage() {
                       {editingExpense?.id === expense.id ? (
                         <input
                           type="number"
-                          value={editingExpense.price}
+                          value={editingExpense?.price || 0}
                           onChange={(e) => handleEditChange('price', parseFloat(e.target.value))}
                           className="bg-slate-800 text-white p-1 rounded w-full"
                         />
@@ -537,7 +537,7 @@ export default function ExpensesPage() {
                       {editingExpense?.id === expense.id ? (
                         <input
                           type="number"
-                          value={editingExpense.tax}
+                          value={editingExpense?.tax || 0}
                           onChange={(e) => handleEditChange('tax', Number(parseFloat(e.target.value).toFixed(2)))}
                           className="bg-slate-800 text-white p-1 rounded"
                           step="0.01"
@@ -550,7 +550,7 @@ export default function ExpensesPage() {
                       {editingExpense?.id === expense.id ? (
                         <input
                           type="number"
-                          value={editingExpense.totalPrice}
+                          value={editingExpense?.totalPrice || 0}
                           onChange={(e) => handleEditChange('totalPrice', Number(parseFloat(e.target.value).toFixed(2)))}
                           className="bg-slate-800 text-white p-1 rounded"
                           step="0.01"
