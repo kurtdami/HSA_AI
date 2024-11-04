@@ -15,20 +15,20 @@ export const metadata: Metadata = {
 
 export default function RootLayout({
   children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
+}: {
+  children: React.ReactNode
+}) {
   return (
     <html lang="en">
-      <body>
-          <AppRouterCacheProvider>
+      <body suppressHydrationWarning>
+        <AppRouterCacheProvider>
           <ThemeProvider theme={theme}>
             <AuthProvider>
               {children}
-              </AuthProvider>
+            </AuthProvider>
           </ThemeProvider>
-          </AppRouterCacheProvider>
-       </body>
+        </AppRouterCacheProvider>
+      </body>
     </html>
   );
 }
