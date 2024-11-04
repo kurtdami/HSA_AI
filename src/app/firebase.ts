@@ -13,36 +13,35 @@ const firebaseConfig = {
   measurementId: process.env.NEXT_PUBLIC_measurementId
 };
 
-console.log("Firebase config:", JSON.stringify(firebaseConfig, null, 2));
+// Add error handling and initialization checks
+const initializeFirebase = () => {
+  if (typeof window === 'undefined') return null;
 
-let app: FirebaseApp | undefined;
-let auth: Auth;
-let provider: GoogleAuthProvider;
-let db: Firestore;
-let analytics: Analytics | undefined;
-
-if (!process.env.NEXT_PUBLIC_apiKey) {
-  console.error("Firebase API key is missing. Check your .env.local file.");
-}
-
-if (typeof window !== 'undefined' && !getApps().length) {
   try {
-    if (!firebaseConfig.apiKey) {
-      throw new Error("Firebase API key is missing");
+    // Check if all required config values are present
+    const requiredKeys = ['apiKey', 'authDomain', 'projectId'];
+    const missingKeys = requiredKeys.filter(key => !firebaseConfig[key]);
+    
+    if (missingKeys.length > 0) {
+      throw new Error(`Missing required Firebase config keys: ${missingKeys.join(', ')}`);
     }
-    app = initializeApp(firebaseConfig);
-    auth = getAuth(app);
-    provider = new GoogleAuthProvider();
-    db = getFirestore(app);
-    if (process.env.NEXT_PUBLIC_measurementId) {
-      analytics = getAnalytics(app);
+
+    if (!getApps().length) {
+      return initializeApp(firebaseConfig);
     }
-    console.log("Firebase initialized successfully");
+    return getApps()[0];
   } catch (error) {
-    console.error("Firebase initialization error", error);
+    console.error('Firebase initialization error:', error);
+    return null;
   }
-} else {
-  console.log("Firebase app already initialized or running on server");
-}
+};
+
+const app = initializeFirebase();
+const auth = app ? getAuth(app) : undefined;
+const provider = new GoogleAuthProvider();
+const db = app ? getFirestore(app) : undefined;
+const analytics = app && process.env.NODE_ENV === 'production' && process.env.NEXT_PUBLIC_measurementId 
+  ? getAnalytics(app) 
+  : undefined;
 
 export { app, auth, provider, db, analytics };

@@ -1,68 +1,81 @@
 'use client'
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { onAuthStateChanged, signOut, User } from 'firebase/auth';
-import { auth as firebaseAuth, app } from './firebase';
+import { auth as firebaseAuth } from './firebase';
+import { useRouter } from 'next/navigation';
 
 interface AuthContextProps {
   user: User | null;
-  logout: () => void;
+  loading: boolean;
+  error: string | null;
+  logout: () => Promise<void>;
 }
 
-const AuthContext = createContext<AuthContextProps>({ user: null, logout: () => {} });
+const AuthContext = createContext<AuthContextProps>({
+  user: null,
+  loading: true,
+  error: null,
+  logout: async () => {}
+});
+
+export const useAuth = () => useContext(AuthContext);
 
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const router = useRouter();
 
   useEffect(() => {
-    const initAuth = async () => {
+    if (typeof window !== 'undefined') {
       try {
-        if (!app || !firebaseAuth) {
-          console.error("Firebase app or auth is not initialized");
+        if (!firebaseAuth) {
+          setError('Firebase Auth is not initialized');
           setLoading(false);
           return;
         }
 
-        console.log("Initializing auth listener");
         const unsubscribe = onAuthStateChanged(firebaseAuth, (user) => {
-          console.log("Auth state changed", user);
           setUser(user);
+          setLoading(false);
+          
+          // Handle navigation based on auth state
+          if (!user && window.location.pathname !== '/') {
+            router.push('/');
+          } else if (user && window.location.pathname === '/') {
+            router.push('/expenses');
+          }
+        }, (error) => {
+          console.error('Auth state change error:', error);
+          setError(error.message);
           setLoading(false);
         });
 
         return () => unsubscribe();
       } catch (error) {
-        console.error("Error in AuthProvider useEffect:", error);
+        console.error('Auth initialization error:', error);
+        setError(error instanceof Error ? error.message : 'Authentication error');
         setLoading(false);
       }
-    };
-
-    initAuth();
-  }, []);
+    }
+  }, [router]);
 
   const logout = async () => {
-    try {
-      if (!app) {
-        console.error("Firebase app is not initialized");
-        return;
-      }
-
-      await signOut(firebaseAuth);
-      console.log("User signed out");
-    } catch (error) {
-      console.error("Error signing out:", error);
+    if (!firebaseAuth) {
+      setError('Firebase Auth is not initialized');
+      return;
     }
-  }
-
-  if (loading) {
-    return <div>Loading...</div>;
-  }
+    try {
+      await signOut(firebaseAuth);
+    } catch (error) {
+      console.error('Logout error:', error);
+      setError(error instanceof Error ? error.message : 'Logout error');
+    }
+  };
 
   return (
-    <AuthContext.Provider value={{ user, logout }}>
+    <AuthContext.Provider value={{ user, loading, error, logout }}>
       {children}
     </AuthContext.Provider>
   );
 };
-
-export const useAuth = () => useContext(AuthContext);

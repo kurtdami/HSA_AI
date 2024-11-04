@@ -70,6 +70,11 @@ export default function ExpensesPage() {
   const [selectedTaxYear, setSelectedTaxYear] = useState<string>('');
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [isUploadedImage, setIsUploadedImage] = useState(false);
+  const [isClient, setIsClient] = useState(false);
+
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
 
   const formatDate = useCallback((date: Date) => {
     return date.toLocaleDateString('en-US', {
@@ -318,7 +323,7 @@ export default function ExpensesPage() {
     }
   }, [image, handleImageCapture]);
 
-  return (
+  return isClient ? (
     <main className="flex min-h-screen flex-col items-center justify-between sm:p-8 p-4">
       <div className="z-10 w-full max-w-7xl items-center justify-between font-mono text-sm">
         <div className="flex justify-between items-center mb-4">
@@ -590,5 +595,5 @@ export default function ExpensesPage() {
         </div>
       </div>
     </main>
-  );
+  ) : null;
 }
