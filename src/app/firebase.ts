@@ -3,6 +3,8 @@ import { getAuth, GoogleAuthProvider, Auth } from 'firebase/auth';
 import { getFirestore, Firestore } from "firebase/firestore";
 import { getAnalytics, Analytics } from "firebase/analytics";
 
+type FirebaseConfigKey = keyof typeof firebaseConfig;
+
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_apiKey,
   authDomain: process.env.NEXT_PUBLIC_authDomain,
@@ -11,7 +13,7 @@ const firebaseConfig = {
   messagingSenderId: process.env.NEXT_PUBLIC_messagingSenderId,
   appId: process.env.NEXT_PUBLIC_appId,
   measurementId: process.env.NEXT_PUBLIC_measurementId
-};
+} as const;
 
 // Add error handling and initialization checks
 const initializeFirebase = () => {
@@ -19,8 +21,10 @@ const initializeFirebase = () => {
 
   try {
     // Check if all required config values are present
-    const requiredKeys = ['apiKey', 'authDomain', 'projectId'];
-    const missingKeys = requiredKeys.filter(key => !firebaseConfig[key]);
+    const requiredKeys = ['apiKey', 'authDomain', 'projectId'] as const;
+    const missingKeys = requiredKeys.filter(
+      (key): key is typeof requiredKeys[number] => !firebaseConfig[key]
+    );
     
     if (missingKeys.length > 0) {
       throw new Error(`Missing required Firebase config keys: ${missingKeys.join(', ')}`);
