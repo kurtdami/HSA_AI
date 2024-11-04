@@ -85,15 +85,19 @@ export default function ExpensesPage() {
   }, []);
 
   useEffect(() => {
-    if (!user) {
-      console.log("No user in ExpensesPage, redirecting to home");
+    if (!user || !db) {
+      console.log("No user or db in ExpensesPage, redirecting to home");
       router.push('/');
       return;
     }
 
     console.log("User in ExpensesPage:", user);
 
-    const q = query(collection(db, 'expenses'), where('userId', '==', user.uid));
+    const q = query(
+      collection(db as Firestore, 'expenses'),
+      where('userId', '==', user.uid)
+    );
+    
     const unsubscribe = onSnapshot(q, (querySnapshot) => {
       const expensesArr = querySnapshot.docs.map(doc => ({
         id: doc.id,
@@ -103,16 +107,16 @@ export default function ExpensesPage() {
     });
 
     return () => unsubscribe();
-  }, [user, router]);
+  }, [user, router, db]);
 
   const addExpense = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user) return;
+    if (!user || !db) return;
 
     try {
-      await addDoc(collection(db, 'expenses'), {
+      await addDoc(collection(db as Firestore, 'expenses'), {
         ...newExpense,
-        date: formatDate(new Date(newExpense.date)), // Ensure date is in YYYY-MM-DD format
+        date: formatDate(new Date(newExpense.date)),
         userId: user.uid,
         createdAt: new Date()
       });
@@ -132,13 +136,13 @@ export default function ExpensesPage() {
   };
 
   const deleteExpense = async (id: string) => {
-    await deleteDoc(doc(db, 'expenses', id));
+    if (!db) return;
+    await deleteDoc(doc(db as Firestore, 'expenses', id));
   };
 
   const updateExpense = async (id: string, updatedExpense: Expense) => {
-    if (!user) return;
+    if (!user || !db) return;
     
-    // Create a new object with only the fields we want to update
     const updateData: Partial<FirestoreExpense> = {
       date: formatDate(new Date(updatedExpense.date)),
       merchant: updatedExpense.merchant,
@@ -149,77 +153,76 @@ export default function ExpensesPage() {
       hsaEligible: updatedExpense.hsaEligible,
     };
 
-    await updateDoc(doc(db, 'expenses', id), updateData);
+    await updateDoc(doc(db as Firestore, 'expenses', id), updateData);
   };
 
   const handleImageCapture = useCallback(async (imageData: string) => {
-    if (imageData) {
-      setAnalysisError(null);
+    if (!imageData || !db || !user) return;
+
+    setAnalysisError(null);
+    try {
+      const result = await run(imageData, process.env.NEXT_PUBLIC_GEMINI_API_KEY);
+      
+      let parsedResult;
       try {
-        const result = await run(imageData, process.env.NEXT_PUBLIC_GEMINI_API_KEY);
-        
-        let parsedResult;
+        parsedResult = JSON.parse(result.response.text());
+      } catch (parseError) {
+        console.error("Error parsing JSON:", parseError);
+        const cleanedJsonString = result.response.text().replace(/\n/g, '').replace(/\r/g, '').trim();
         try {
-          parsedResult = JSON.parse(result.response.text());
-        } catch (parseError) {
-          console.error("Error parsing JSON:", parseError);
-          const cleanedJsonString = result.response.text().replace(/\n/g, '').replace(/\r/g, '').trim();
-          try {
-            parsedResult = JSON.parse(cleanedJsonString);
-          } catch (secondParseError) {
-            console.error("Error parsing cleaned JSON:", secondParseError);
-            setAnalysisError("Unable to parse the receipt data. Please try again.");
-            return;
-          }
-        }
-        
-        if (!parsedResult.items || !Array.isArray(parsedResult.items)) {
-          setAnalysisError("Invalid receipt data format. Please try again.");
+          parsedResult = JSON.parse(cleanedJsonString);
+        } catch (secondParseError) {
+          console.error("Error parsing cleaned JSON:", secondParseError);
+          setAnalysisError("Unable to parse the receipt data. Please try again.");
           return;
         }
-        
-        const taxRate = parseFloat(parsedResult.taxRate) / 100;
-        const hsaEligibleItems = parsedResult.items.filter((item: ReceiptItem) => item.HealthSpendingAccountEligible);
-        
-        if (hsaEligibleItems.length > 0) {
-          // Add each HSA-eligible item as a separate expense
-          for (const item of hsaEligibleItems) {
-            const price = parseFloat(item.price);
-            const tax = Number((price * taxRate).toFixed(2));
-            const totalPrice = Number((price + tax).toFixed(2));
-            
-            await addDoc(collection(db, 'expenses'), {
-              date: formatDate(new Date(parsedResult.date)),
-              merchant: parsedResult.merchant,
-              itemName: item.name,
-              price: price,
-              tax: tax,
-              totalPrice: totalPrice,
-              hsaEligible: item.HealthSpendingAccountEligible,
-              userId: user?.uid,
-              createdAt: new Date()
-            });
-          }
-          setNewExpense({
-            date: '',
-            merchant: '',
-            itemName: '',
-            price: 0,
-            tax: 0,
-            totalPrice: 0,
-            hsaEligible: false
-          });
-          setImage('');
-        } else {
-          setAnalysisError("No HSA-eligible items found in the receipt.");
-        }
-        
-      } catch (error) {
-        console.error("Error analyzing image:", error);
-        setAnalysisError("An error occurred while analyzing the image. Please try again.");
       }
+      
+      if (!parsedResult.items || !Array.isArray(parsedResult.items)) {
+        setAnalysisError("Invalid receipt data format. Please try again.");
+        return;
+      }
+      
+      const taxRate = parseFloat(parsedResult.taxRate) / 100;
+      const hsaEligibleItems = parsedResult.items.filter((item: ReceiptItem) => item.HealthSpendingAccountEligible);
+      
+      if (hsaEligibleItems.length > 0) {
+        for (const item of hsaEligibleItems) {
+          const price = parseFloat(item.price);
+          const tax = Number((price * taxRate).toFixed(2));
+          const totalPrice = Number((price + tax).toFixed(2));
+          
+          await addDoc(collection(db as Firestore, 'expenses'), {
+            date: formatDate(new Date(parsedResult.date)),
+            merchant: parsedResult.merchant,
+            itemName: item.name,
+            price: price,
+            tax: tax,
+            totalPrice: totalPrice,
+            hsaEligible: item.HealthSpendingAccountEligible,
+            userId: user.uid,
+            createdAt: new Date()
+          });
+        }
+        setNewExpense({
+          date: '',
+          merchant: '',
+          itemName: '',
+          price: 0,
+          tax: 0,
+          totalPrice: 0,
+          hsaEligible: false
+        });
+        setImage('');
+      } else {
+        setAnalysisError("No HSA-eligible items found in the receipt.");
+      }
+      
+    } catch (error) {
+      console.error("Error analyzing image:", error);
+      setAnalysisError("An error occurred while analyzing the image. Please try again.");
     }
-  }, [formatDate, user, setImage]);
+  }, [formatDate, user, db, setImage]);
 
   const handleLogout = async () => {
     try {
