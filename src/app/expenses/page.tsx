@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect, useCallback } from 'react';
-import { collection, addDoc, query, onSnapshot, deleteDoc, doc, updateDoc, where } from 'firebase/firestore';
+import { collection, addDoc, query, onSnapshot, deleteDoc, doc, updateDoc, where, Firestore } from 'firebase/firestore';
 import { db } from '../firebase';
 import { PlusIcon, TrashIcon, ArrowDownTrayIcon } from "@heroicons/react/16/solid";
 import { useAuth } from "../authcontext";
@@ -107,7 +107,7 @@ export default function ExpensesPage() {
     });
 
     return () => unsubscribe();
-  }, [user, router, db]);
+  }, [user, router]);
 
   const addExpense = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -222,7 +222,7 @@ export default function ExpensesPage() {
       console.error("Error analyzing image:", error);
       setAnalysisError("An error occurred while analyzing the image. Please try again.");
     }
-  }, [formatDate, user, db, setImage]);
+  }, [formatDate, user, setImage]);
 
   const handleLogout = async () => {
     try {
