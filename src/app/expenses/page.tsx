@@ -985,7 +985,7 @@ export default function ExpensesPage() {
                             />
                           ) : (
                             <div
-                              onClick={() => setEditingDate(expense.id)}
+                              onClick={() => setEditingDate(expense.id ?? null)}
                               className="cursor-pointer hover:bg-slate-700 p-1 rounded w-full"
                             >
                               {formatDate(new Date(expense.date))}
