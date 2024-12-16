@@ -4,5 +4,6 @@ Utilized a Large Language Model(LLM- Google Gemini) to analyze and add items to 
 
 Tech Stack :
   Next.js, Typescript, Tailwind CSS, Material UI, Google Auth, Google Firebase, Google Gemini LLM
+Mobile app: Future Work
 
 

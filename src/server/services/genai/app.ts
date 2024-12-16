@@ -2,17 +2,25 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 // import fs from 'fs';
 import mime from 'mime';
 import * as dotenv from "dotenv";
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
+
+// Load environment variables
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+dotenv.config({ path: join(__dirname, '../../../.env') });
 
 
-async function run(imagePath, api_key) {
-    //console.log("Gemini API Key:", process.env.NEXT_PUBLIC_GEMINI_API_KEY);
-    if (!process.env.NEXT_PUBLIC_GEMINI_API_KEY) {
-        console.log("Gemini API key not set. Skipping API call.");
-        return { response: { text: () => '{"date": "2023-04-01", "merchant": "Sample Store", "items": [{"name": "Sample Item", "price": 100, "tax": 10, "totalPrice": 110}]}' } };
+async function run(imagePath) {
+    if (!process.env.GEMINI_API_KEY) {
+      throw new Error('Gemini API key not configured');
     }
-    dotenv.config();
-    const genAI = new GoogleGenerativeAI(process.env.NEXT_PUBLIC_GEMINI_API_KEY);
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro-002"});
+    
+   
+    const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+    const model = genAI.getGenerativeModel({
+        model: "gemini-1.5-pro-002"
+    });
 
     const prompt = `Analyze this receipt image and identify Health Spending Account (HSA)-eligible items. HSA-eligible items are generally those used for medical care, to alleviate or treat a specific medical condition, or for preventive care.
 Key Classification Rules:
@@ -31,7 +39,7 @@ Check if the item falls under any of the qualified medical categories listed bel
 Consider both generic and branded versions of medical items as eligible
 Items that treat symptoms (pain, cough, cold, etc.) are eligible
 Items that provide therapeutic benefits for medical conditions are eligible
-
+Consider product names as potential indicators of their medical category alignment
 
 Medical vs. General Use:
 
@@ -41,6 +49,7 @@ If marketed/sold as a medical treatment → eligible
 If containing active medical ingredients → eligible
 If primarily for symptom relief → eligible
 If marketed for general comfort/convenience → not eligible
+If for general hygiene/grooming or daily use items even if they have health benefits → not eligible
 
 
 Return a JSON response with the following structure:
@@ -81,6 +90,7 @@ Qualified Medical and Over-the-Counter Items might include
  Artificial Limbs
  Aspirin
  Automated External Defibrillator
+ Breathing Aids
  Baby Rash Ointments & Creams
  Birth Control and Contraceptive
 Pills and Implants
@@ -96,6 +106,7 @@ supplies
  Cardiograph
  Childbirth Classes (Lamaze)
  Clinical Trials
+ Cough Drops
  Cold, Cough & Flu Medications
  Cold Sore Remedies
  Compression Hose/Stockings
@@ -162,7 +173,7 @@ person), Care and Training
  Motion Sickness Medications
  MRI
  Neti Pot
- Nasal strips or sprays
+ Nasal strips or sprays 
  Nicotine gum, lozenges or patches for
 smoking cessation purposes
  Office Visits
@@ -245,11 +256,31 @@ Disabled Child
     
     // Change the order here: pass image first, then prompt
     const result = await model.generateContent([image, prompt]);
-    console.log("Full Gemini API response:", result);
+    // Log only the text response, not the full result with image
+    console.log("Gemini API response text:", result.response.text());
     const rawText = result.response.text();
-    const cleanedText = rawText.replace(/```json\n|\n```/g, '');
-    console.log("Generated text:", cleanedText);
-    return { response: { text: () => cleanedText } };
+    
+    // Clean and format the JSON properly
+    let cleanedText = rawText
+        .replace(/```json\n?|\n?```/g, '')  // Remove JSON code blocks
+        .replace(/\n\s*/g, '')              // Remove newlines and extra spaces
+        .replace(/,\s*]/g, ']')             // Remove trailing commas in arrays
+        .replace(/,\s*}/g, '}')             // Remove trailing commas in objects
+        .trim();
+    
+    try {
+        // Validate JSON format
+        JSON.parse(cleanedText);
+        console.log("Valid JSON:", cleanedText);
+        return { response: { text: () => cleanedText } };
+    } catch (error) {
+        console.error("Invalid JSON from Gemini:", error);
+        return { 
+            response: { 
+                text: () => '{"error": "Invalid JSON response from Gemini"}' 
+            } 
+        };
+    }
 }
-
 export { run };
+

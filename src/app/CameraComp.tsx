@@ -1,6 +1,7 @@
 import React, { useRef, useState, useCallback } from 'react';
 import Webcam from 'react-webcam';
 import { ArrowPathIcon, XMarkIcon } from '@heroicons/react/24/solid';
+import Image from 'next/image';
 
 interface CameraCompProps {
   image: string;
@@ -74,10 +75,12 @@ const CameraComp: React.FC<CameraCompProps> = ({ image, setImage, setDisplayImag
         </>
       ) : (
         <div className="relative">
-          <img 
+          <Image 
             src={image} 
             alt="Captured" 
             className="w-full h-auto rounded-lg"
+            width={640}
+            height={480}
           />
           <div className="absolute bottom-4 left-0 right-0 flex justify-between px-4">
             <button

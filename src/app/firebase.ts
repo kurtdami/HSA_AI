@@ -1,48 +1,77 @@
 import { initializeApp, getApps, FirebaseApp } from "firebase/app";
-import { getAuth, GoogleAuthProvider, Auth } from 'firebase/auth';
+import { 
+  getAuth as getFirebaseAuth, 
+  GoogleAuthProvider, 
+  Auth, 
+  browserLocalPersistence,
+  setPersistence,
+} from 'firebase/auth';
+
+import { FirebaseConfig } from '../types/auth';
+
 import { getFirestore, Firestore } from "firebase/firestore";
 import { getAnalytics, Analytics } from "firebase/analytics";
 
-const firebaseConfig = {
-  apiKey: process.env.NEXT_PUBLIC_apiKey,
-  authDomain: process.env.NEXT_PUBLIC_authDomain,
-  projectId: process.env.NEXT_PUBLIC_projectId,
-  storageBucket: process.env.NEXT_PUBLIC_storageBucket,
-  messagingSenderId: process.env.NEXT_PUBLIC_messagingSenderId,
-  appId: process.env.NEXT_PUBLIC_appId,
-  measurementId: process.env.NEXT_PUBLIC_measurementId
-};
-
-console.log("Firebase config:", JSON.stringify(firebaseConfig, null, 2));
-
-let app: FirebaseApp | undefined;
-let auth: Auth;
-let provider: GoogleAuthProvider;
-let db: Firestore;
+let app: FirebaseApp | null = null;
+let auth: Auth | null = null;
+let db: Firestore | null = null;
 let analytics: Analytics | undefined;
+let provider: GoogleAuthProvider | null = null;
 
-if (!process.env.NEXT_PUBLIC_apiKey) {
-  console.error("Firebase API key is missing. Check your .env.local file.");
-}
+export async function initializeFirebase(config: FirebaseConfig) {
+  // Initialize provider outside the if(!app) block since it needs to be set every time
+  provider = new GoogleAuthProvider();
+  provider.addScope('profile');
+  provider.addScope('email');
+  provider.setCustomParameters({
+    prompt: 'select_account'
+  });
 
-if (typeof window !== 'undefined' && !getApps().length) {
-  try {
-    if (!firebaseConfig.apiKey) {
-      throw new Error("Firebase API key is missing");
+  if (!app) {
+    try {
+      app = initializeApp(config);
+      auth = getFirebaseAuth(app);
+      db = getFirestore(app);
+      
+      if (typeof window !== 'undefined' && process.env.NODE_ENV === 'production') {
+        analytics = getAnalytics(app);
+      }
+
+      // Set persistence immediately
+      await setPersistence(auth, browserLocalPersistence);
+      console.log('Firebase initialized successfully');
+      console.log('Firebase provider initialized successfully');
+
+      // Ensure the state check is after all initializations
+      console.log('Final state check:', {
+        hasApp: !!app,
+        hasAuth: !!auth,
+        hasProvider: !!provider,
+        hasDb: !!db
+      });
+    } catch (error) {
+      console.error('Error initializing Firebase:', error);
+      throw error;
     }
-    app = initializeApp(firebaseConfig);
-    auth = getAuth(app);
-    provider = new GoogleAuthProvider();
-    db = getFirestore(app);
-    if (process.env.NEXT_PUBLIC_measurementId) {
-      analytics = getAnalytics(app);
-    }
-    console.log("Firebase initialized successfully");
-  } catch (error) {
-    console.error("Firebase initialization error", error);
   }
-} else {
-  console.log("Firebase app already initialized or running on server");
+
+  // Ensure this check is after the provider initialization
+  if (!auth || !provider || !db) {
+    console.error('Pre-return state check failed:', {
+      hasApp: !!app,
+      hasAuth: !!auth,
+      hasProvider: !!provider,
+      hasDb: !!db,
+      // Add actual values for debugging
+      authType: auth?.constructor?.name,
+      providerType: provider?.constructor?.name,
+      dbType: db?.constructor?.name
+    });
+    throw new Error('Firebase initialization failed');
+  }
+
+  return { app, auth, provider, db, analytics };
 }
 
+// Export initialized instances for convenience, but they might be null initially
 export { app, auth, provider, db, analytics };
