@@ -35,20 +35,21 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [auth, setAuth] = useState<Auth | null>(null);
   const router = useRouter();
 
+  const firebaseConfig = {
+    apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY!,
+    authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN!,
+    projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID!,
+    storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET!,
+    messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID!,
+    appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID!,
+    measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID!,
+    databaseURL: process.env.NEXT_PUBLIC_FIREBASE_DATABASE_URL!
+  };
+
   useEffect(() => {
     // Initialize Firebase and set up auth listener
     const initAuth = async () => {
       console.log('Firebase config:', process.env);
-      const firebaseConfig = {
-        apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY!,
-        authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN!,
-        projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID!,
-        storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET!,
-        messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID!,
-        appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID!,
-        measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID!,
-        databaseURL: process.env.NEXT_PUBLIC_FIREBASE_DATABASE_URL!
-      }
       console.log('Firebase config:', firebaseConfig);
       try {
         const { auth: firebaseAuth, provider } = await initializeFirebase(firebaseConfig);
@@ -80,7 +81,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     try {
       setLoading(true);
       setError(null);
-      const { provider } = await initializeFirebase();
+      const { provider } = await initializeFirebase(firebaseConfig);
       const result = await signInWithPopup(auth, provider);
       setUser(result.user);
       router.push('/expenses');
