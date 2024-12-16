@@ -19,7 +19,7 @@ async function run(imagePath) {
    
     const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
     const model = genAI.getGenerativeModel({
-        model: "gemini-1.5-pro-002"
+        model: "gemini-2.0-flash-exp"
     });
 
     const prompt = `Analyze this receipt image and identify Health Spending Account (HSA)-eligible items. HSA-eligible items are generally those used for medical care, to alleviate or treat a specific medical condition, or for preventive care.
