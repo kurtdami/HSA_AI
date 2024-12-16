@@ -77,6 +77,14 @@ type FirestoreExpense = {
 
 const ITEMS_PER_PAGE = 15; // You can adjust this number
 
+// Add this type for the chart context
+interface ChartContext {
+  raw: number;
+  dataset: {
+    data: number[];
+  };
+}
+
 export default function ExpensesPage() {
   const { user, logout } = useAuth();
   const router = useRouter();
@@ -651,7 +659,7 @@ export default function ExpensesPage() {
     };
   }, [calculateGrowthProjection]);
 
-  // Add growth chart options
+  // Update the growth chart options
   const growthChartOptions = {
     responsive: true,
     maintainAspectRatio: false,
@@ -661,7 +669,7 @@ export default function ExpensesPage() {
       },
       tooltip: {
         callbacks: {
-          label: (context: any) => {
+          label: (context: ChartContext) => {
             return `$${context.raw.toLocaleString(undefined, {
               minimumFractionDigits: 2,
               maximumFractionDigits: 2
@@ -687,6 +695,7 @@ export default function ExpensesPage() {
     },
     scales: {
       x: {
+        type: 'category' as const,
         grid: {
           color: 'rgba(148, 163, 184, 0.1)',
           drawBorder: false
@@ -699,6 +708,7 @@ export default function ExpensesPage() {
         }
       },
       y: {
+        type: 'linear' as const,
         grid: {
           color: 'rgba(148, 163, 184, 0.1)',
           drawBorder: false
@@ -708,20 +718,23 @@ export default function ExpensesPage() {
           font: {
             size: 13
           },
-          callback: (value: number) => {
-            return `$${value.toLocaleString(undefined, {
-              minimumFractionDigits: 0,
-              maximumFractionDigits: 0
-            })}`;
+          callback: function(this: any, value: number | string) {
+            if (typeof value === 'number') {
+              return `$${value.toLocaleString(undefined, {
+                minimumFractionDigits: 0,
+                maximumFractionDigits: 0
+              })}`;
+            }
+            return value;
           }
         }
       }
     },
     elements: {
       point: {
-        radius: 4, // Default point size
-        hoverRadius: 8, // Bigger point size on hover
-        backgroundColor: 'rgba(236, 72, 153, 1)', // pink-500
+        radius: 4,
+        hoverRadius: 8,
+        backgroundColor: 'rgba(236, 72, 153, 1)',
         borderColor: 'rgba(236, 72, 153, 1)',
         borderWidth: 2,
         hoverBorderWidth: 3,
@@ -737,7 +750,7 @@ export default function ExpensesPage() {
       intersect: false,
       mode: 'index' as const,
     }
-  };
+  } as const;
 
   return isClient ? (
     <main className="min-h-screen bg-[#0B1120] flex flex-col items-center justify-between p-4">
