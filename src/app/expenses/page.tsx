@@ -6,7 +6,7 @@ import { PlusIcon, TrashIcon, ArrowDownTrayIcon, ArrowUpTrayIcon } from "@heroic
 import { useAuth } from "../authcontext";
 import { useRouter } from "next/navigation";
 import { CameraComp } from "../CameraComp";
-import { run } from "../genai/app";
+import { run } from "../../server/services/genai/app";
 import * as XLSX from 'xlsx';
 import Image from 'next/image';
 import { 
