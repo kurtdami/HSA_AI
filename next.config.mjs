@@ -2,9 +2,11 @@
 const nextConfig = {
   images: {
     domains: [
-      'lh3.googleusercontent.com', // For Google profile images
-      'firebasestorage.googleapis.com' // For Firebase Storage
+      'lh3.googleusercontent.com',
+      'firebasestorage.googleapis.com'
     ],
+    dangerouslyAllowSVG: true,
+    unoptimized: true,
   },
   async headers() {
     return [
@@ -14,10 +16,21 @@ const nextConfig = {
           {
             key: 'Cross-Origin-Opener-Policy',
             value: 'same-origin-allow-popups'
+          },
+          {
+            key: 'Cross-Origin-Embedder-Policy',
+            value: 'unsafe-none'
+          },
+          {
+            key: 'Cross-Origin-Resource-Policy',
+            value: 'cross-origin'
           }
         ],
       },
     ];
+  },
+  env: {
+    VERCEL_ENV: process.env.VERCEL_ENV || 'development',
   }
 };
 
