@@ -85,6 +85,19 @@ interface ChartContext {
   };
 }
 
+// Add this interface at the top with your other interfaces
+interface TooltipItem {
+  raw: number;
+  parsed: {
+    y: number;
+  };
+  datasetIndex: number;
+  dataset: {
+    label: string;
+    data: number[];
+  };
+}
+
 export default function ExpensesPage() {
   const { user, logout } = useAuth();
   const router = useRouter();
@@ -669,8 +682,8 @@ export default function ExpensesPage() {
       },
       tooltip: {
         callbacks: {
-          label: (context: ChartContext) => {
-            return `$${context.raw.toLocaleString(undefined, {
+          label: function(tooltipItem: TooltipItem) {
+            return `$${tooltipItem.raw.toLocaleString(undefined, {
               minimumFractionDigits: 2,
               maximumFractionDigits: 2
             })}`;
@@ -718,14 +731,11 @@ export default function ExpensesPage() {
           font: {
             size: 13
           },
-          callback: function(this: any, value: number | string) {
-            if (typeof value === 'number') {
-              return `$${value.toLocaleString(undefined, {
-                minimumFractionDigits: 0,
-                maximumFractionDigits: 0
-              })}`;
-            }
-            return value;
+          callback: function(value: number) {
+            return `$${value.toLocaleString(undefined, {
+              minimumFractionDigits: 0,
+              maximumFractionDigits: 0
+            })}`;
           }
         }
       }
@@ -739,16 +749,16 @@ export default function ExpensesPage() {
         borderWidth: 2,
         hoverBorderWidth: 3,
         hoverBorderColor: 'rgba(236, 72, 153, 1)',
-        hoverBackgroundColor: 'white',
+        hoverBackgroundColor: 'white'
       },
       line: {
         tension: 0.4,
-        borderWidth: 3,
+        borderWidth: 3
       }
     },
     interaction: {
       intersect: false,
-      mode: 'index' as const,
+      mode: 'index' as const
     }
   } as const;
 
