@@ -3,7 +3,7 @@ Designed and implemented an HSA expense tracking system using NextJS, Tailwind C
 Utilized a Large Language Model(LLM- Google Gemini) to analyze and add items to the database based on the image captured or uploaded by the user
 
 Tech Stack :
-  Next.js, Typescript, Tailwind CSS, Material UI, Google Auth, Google Firebase, Google Gemini LLM
+  Next.js, Typescript, Tailwind CSS, Google Auth, Google Firebase, Google Gemini LLM
 Mobile app: Future Work
 
 
