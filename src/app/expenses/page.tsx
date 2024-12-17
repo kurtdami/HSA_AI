@@ -699,7 +699,6 @@ export default function ExpensesPage() {
     },
     scales: {
       x: {
-        type: 'category' as const,
         grid: {
           color: 'rgba(148, 163, 184, 0.1)',
           drawBorder: false
@@ -712,7 +711,6 @@ export default function ExpensesPage() {
         }
       },
       y: {
-        type: 'linear' as const,
         grid: {
           color: 'rgba(148, 163, 184, 0.1)',
           drawBorder: false
@@ -722,11 +720,14 @@ export default function ExpensesPage() {
           font: {
             size: 13
           },
-          callback: function(value: number) {
-            return `$${value.toLocaleString(undefined, {
-              minimumFractionDigits: 0,
-              maximumFractionDigits: 0
-            })}`;
+          callback: function(this: any, value: number | string, index: number, ticks: any[]) {
+            if (typeof value === 'number') {
+              return `$${value.toLocaleString(undefined, {
+                minimumFractionDigits: 0,
+                maximumFractionDigits: 0
+              })}`;
+            }
+            return value;
           }
         }
       }
