@@ -42,5 +42,3 @@ The AI-powered receipt analysis:
 
 ## License
 MIT
-
-
