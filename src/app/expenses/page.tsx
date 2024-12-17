@@ -6,7 +6,7 @@ import { PlusIcon, TrashIcon, ArrowDownTrayIcon, ArrowUpTrayIcon } from "@heroic
 import { useAuth } from "../authcontext";
 import { useRouter } from "next/navigation";
 import { CameraComp } from "../CameraComp";
-import { run } from "../genai/app";
+import { run } from "../../server/services/genai/app";
 import * as XLSX from 'xlsx';
 import Image from 'next/image';
 import { 
@@ -22,6 +22,7 @@ import {
   Filler
 } from 'chart.js';
 import { Pie, Line } from 'react-chartjs-2';
+import { TooltipItem as ChartTooltipItem } from 'chart.js';
 
 ChartJS.register(
   ArcElement,
@@ -76,6 +77,14 @@ type FirestoreExpense = {
 };
 
 const ITEMS_PER_PAGE = 15; // You can adjust this number
+
+// Add this type for the chart context
+interface ChartContext {
+  raw: number;
+  dataset: {
+    data: number[];
+  };
+}
 
 export default function ExpensesPage() {
   const { user, logout } = useAuth();
@@ -651,7 +660,7 @@ export default function ExpensesPage() {
     };
   }, [calculateGrowthProjection]);
 
-  // Add growth chart options
+  // Update the growth chart options
   const growthChartOptions = {
     responsive: true,
     maintainAspectRatio: false,
@@ -661,11 +670,14 @@ export default function ExpensesPage() {
       },
       tooltip: {
         callbacks: {
-          label: (context: any) => {
-            return `$${context.raw.toLocaleString(undefined, {
-              minimumFractionDigits: 2,
-              maximumFractionDigits: 2
-            })}`;
+          label: function(tooltipItem: ChartTooltipItem<'line'>) {
+            if (typeof tooltipItem.raw === 'number') {
+              return `$${tooltipItem.raw.toLocaleString(undefined, {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2
+              })}`;
+            }
+            return '';
           }
         },
         titleFont: {
@@ -708,36 +720,39 @@ export default function ExpensesPage() {
           font: {
             size: 13
           },
-          callback: (value: number) => {
-            return `$${value.toLocaleString(undefined, {
-              minimumFractionDigits: 0,
-              maximumFractionDigits: 0
-            })}`;
+          callback: function(this: any, value: number | string, index: number, ticks: any[]) {
+            if (typeof value === 'number') {
+              return `$${value.toLocaleString(undefined, {
+                minimumFractionDigits: 0,
+                maximumFractionDigits: 0
+              })}`;
+            }
+            return value;
           }
         }
       }
     },
     elements: {
       point: {
-        radius: 4, // Default point size
-        hoverRadius: 8, // Bigger point size on hover
-        backgroundColor: 'rgba(236, 72, 153, 1)', // pink-500
+        radius: 4,
+        hoverRadius: 8,
+        backgroundColor: 'rgba(236, 72, 153, 1)',
         borderColor: 'rgba(236, 72, 153, 1)',
         borderWidth: 2,
         hoverBorderWidth: 3,
         hoverBorderColor: 'rgba(236, 72, 153, 1)',
-        hoverBackgroundColor: 'white',
+        hoverBackgroundColor: 'white'
       },
       line: {
         tension: 0.4,
-        borderWidth: 3,
+        borderWidth: 3
       }
     },
     interaction: {
       intersect: false,
-      mode: 'index' as const,
+      mode: 'index' as const
     }
-  };
+  } as const;
 
   return isClient ? (
     <main className="min-h-screen bg-[#0B1120] flex flex-col items-center justify-between p-4">
@@ -985,7 +1000,7 @@ export default function ExpensesPage() {
                             />
                           ) : (
                             <div
-                              onClick={() => setEditingDate(expense.id)}
+                              onClick={() => setEditingDate(expense.id ?? null)}
                               className="cursor-pointer hover:bg-slate-700 p-1 rounded w-full"
                             >
                               {formatDate(new Date(expense.date))}

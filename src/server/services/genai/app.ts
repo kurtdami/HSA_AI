@@ -11,7 +11,7 @@ const __dirname = dirname(__filename);
 dotenv.config({ path: join(__dirname, '../../../.env') });
 
 
-async function run(imagePath) {
+async function run(imagePath: string | File) {
     if (!process.env.GEMINI_API_KEY) {
       throw new Error('Gemini API key not configured');
     }
@@ -19,7 +19,7 @@ async function run(imagePath) {
    
     const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
     const model = genAI.getGenerativeModel({
-        model: "gemini-1.5-pro-002"
+        model: "gemini-2.0-flash-exp"
     });
 
     const prompt = `Analyze this receipt image and identify Health Spending Account (HSA)-eligible items. HSA-eligible items are generally those used for medical care, to alleviate or treat a specific medical condition, or for preventive care.
@@ -228,17 +228,22 @@ Disabled Child
 
 //"OCR": "OCR text from the receipt",
 
-    let imageData, mimeType;
+    let imageData: string, mimeType: string;
 
     if (typeof imagePath === 'string' && imagePath.startsWith('data:')) {
         // Handle base64 encoded image
-        [mimeType, imageData] = imagePath.split(',');
-        mimeType = mimeType.split(':')[1].split(';')[0];
+        const parts = imagePath.split(',');
+        mimeType = parts[0].split(':')[1].split(';')[0];
+        imageData = parts[1];
     } else if (imagePath instanceof File) {
         // Handle File object
         const reader = new FileReader();
-        imageData = await new Promise((resolve) => {
-            reader.onload = (e) => resolve(e.target.result.split(',')[1]);
+        imageData = await new Promise<string>((resolve) => {
+            reader.onload = (e) => {
+                if (e.target?.result) {
+                    resolve((e.target.result as string).split(',')[1]);
+                }
+            };
             reader.readAsDataURL(imagePath);
         });
         mimeType = imagePath.type;
