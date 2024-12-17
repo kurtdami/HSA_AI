@@ -22,6 +22,7 @@ import {
   Filler
 } from 'chart.js';
 import { Pie, Line } from 'react-chartjs-2';
+import { TooltipItem as ChartTooltipItem } from 'chart.js';
 
 ChartJS.register(
   ArcElement,
@@ -81,19 +82,6 @@ const ITEMS_PER_PAGE = 15; // You can adjust this number
 interface ChartContext {
   raw: number;
   dataset: {
-    data: number[];
-  };
-}
-
-// Add this interface at the top with your other interfaces
-interface TooltipItem {
-  raw: number;
-  parsed: {
-    y: number;
-  };
-  datasetIndex: number;
-  dataset: {
-    label: string;
     data: number[];
   };
 }
@@ -682,11 +670,14 @@ export default function ExpensesPage() {
       },
       tooltip: {
         callbacks: {
-          label: function(tooltipItem: TooltipItem) {
-            return `$${tooltipItem.raw.toLocaleString(undefined, {
-              minimumFractionDigits: 2,
-              maximumFractionDigits: 2
-            })}`;
+          label: function(tooltipItem: ChartTooltipItem<'line'>) {
+            if (typeof tooltipItem.raw === 'number') {
+              return `$${tooltipItem.raw.toLocaleString(undefined, {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2
+              })}`;
+            }
+            return '';
           }
         },
         titleFont: {
